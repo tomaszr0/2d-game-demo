@@ -1,0 +1,329 @@
+<!doctype html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta charset="utf-8">
+ 	<link rel='stylesheet' href='style.css'>
+	<title>Platform game</title>
+</head>
+<body>
+<canvas height=400 width=400></canvas><span></span>
+<left>left</left><up>up</up><right>right</right>
+<script src="objects.js"></script>
+<script src="effects.js"></script>
+<script src="skills.js"></script>
+<script src="functions.js"></script>
+<script src="blocks.js"></script>
+<script src="textures.js"></script>
+<script>
+	c=document.getElementsByTagName("canvas")[0];
+	p=c.getContext("2d");
+	span=document.getElementsByTagName("span")[0];
+	left=document.getElementsByTagName("left")[0];
+	up=document.getElementsByTagName("up")[0];
+	right=document.getElementsByTagName("right")[0];
+    cF=0; // camera focus
+    cS=8; // camera speed
+    cX=o[cF].x; // camera x coord
+    cY=o[cF].y; // camera y coord
+    mX=0;
+    mY=0;
+    mouseAngle=0;
+    click=0;
+	pxl=20; // pixels per block
+    fpsMax=70; //  interval
+    intervals=[];
+    jump=0; // jump boolean
+    left=0; // left move timestamp
+    right=0; // right move timestamp
+    timeBefore=Date.now(); // fps timestamp
+    debug=0;
+    skillSel=0;
+    
+	main=setTimeout(update,0);
+	function update(){
+        // CALCULATING OBJECTS
+        o.forEach(function(obj,id){
+            if(obj.status=="static")
+                return;
+            if(typeof obj.initialType!=="undefined")
+                obj.object=obj.initialType;
+            
+            // SKILLS
+            if(id==cF)
+                obj.skillAngle=mouseAngle;
+            else
+                obj.skillAngle=obj.angle;
+            if(typeof obj.skill!=="undefined" && obj.skill!=undefined)
+                skillF(obj);
+            // SKILLS /
+            
+            // BUFFS
+            if(typeof obj.buffs !== "undefined")
+                obj.buffs.forEach(function(buff,index){
+                    switch(buff.type){
+                        case "transform":
+                            obj.initialType=obj.object;
+                            obj.object=buff.id;
+                            break;
+                    }
+                    if(typeof buff.ticks !== "undefined"){
+                        buff.ticks--;
+                        if(buff.ticks<=0)
+                            obj.buffs.splice(index,1);
+                    }
+                });
+            // BUFFS /
+            
+            // EFFECTS
+            e.forEach(function(eff,index){
+                effP=eP[eff.id];
+                if(obj.y<=eff.y+effP.range && obj.y>=eff.y-effP.range && obj.x<=eff.x+effP.range && obj.x>=eff.x-effP.range)
+                    switch(effP.type){
+                        case "ascend":
+                            obj.yAcc+=effP.yAcc;
+                            if(obj.yAcc>effP.yAccMax)
+                                obj.yAcc=effP.yAccMax;
+                            break;
+                        case "gravity":
+                            angle=accToAngle(eff.x-obj.x,eff.y-obj.y);
+                            obj.xAcc=Math.cos(angle*Math.PI/180)*effP.acc;
+                            obj.yAcc=-Math.sin(angle*Math.PI/180)*effP.acc;
+                            break;
+                    }
+                eff.ticks--;
+                if(eff.ticks<=0)
+                    e.splice(index,1); 
+            });
+            // EFFECTS /
+
+            
+            // PARAMETERS
+            timeD=Date.now()-timeBefore; // for any move distance calculations
+            objP=oP[obj.object];
+            w=objP.width;
+            h=objP.height;
+            xAcc=obj.xAcc;
+            xAccI=objP.xAccI;
+            xAccD=objP.xAccD;
+            xAccMax=objP.xAccMax;
+            yAcc=obj.yAcc;
+            yAccJump=objP.yAccJump;
+            yAccFall=objP.yAccFall;
+            yAccMax=objP.yAccMax;
+            x=obj.x;
+            y=obj.y;
+            angle=accToAngle(xAcc,yAcc);
+            obj.angle=angle;
+            // PARAMETERS /
+            
+            
+            // HORIZONTAL MOVE
+            if(id==cF){
+                if(left && left>right)
+                    xAcc-=xAccI;
+                else if(right)
+                    xAcc+=xAccI;
+                else if(Math.abs(xAcc)>xAccD)
+                    xAcc=(Math.abs(xAcc)-xAccD)*Math.abs(xAcc)/xAcc;
+                else
+                    xAcc=0;
+            }
+            else{
+                if(Math.abs(xAcc)<xAccD)
+                    xAcc=0;
+                else
+                    xAcc=(Math.abs(xAcc)-xAccD)*Math.abs(xAcc)/xAcc;
+            };
+            if(Math.abs(xAcc)>xAccMax)
+                xAcc=xAccMax*Math.abs(xAcc)/xAcc;
+            result=checkXAcc(x,y,w,h,xAcc);
+            x=result.x;
+            if(result.hit==1)
+                xAcc=0;
+            if(result.hit==1 && objP.type=="projectile"){
+                obj.status="static";
+                if(objP.name=="fireball"){
+                    e[e.length]={id:1,x:x,y:y,ticks:1};
+                    o.splice(id,1);
+                }
+            }
+            x=Math.round(x*100)/100;
+            obj.xAcc=xAcc;
+            obj.x=x;
+            // HORIZONTAL MOVE /
+            if(obj.status=="static")
+                return;
+            
+            // VERTICAL MOVE
+            if(checkBlockDown(x,y,w)){
+                if(objP.type=="projectile")
+                    obj.status="static";
+//                yAcc=0;
+                if(jump && id==cF)
+                    yAcc=yAccJump;
+            }
+            result=checkYAcc(x,y,w,h,yAcc);
+            y=Math.round(result.y*100)/100;
+            if(result.hit==1)
+                yAcc=0;
+            if(result.hit==1 && objP.type=="projectile"){
+                obj.status="static";
+                if(objP.name=="fireball"){
+                    e[e.length]={id:1,x:x,y:y,ticks:1};
+                    o.splice(id,1);
+                }
+            }
+            yAcc-=yAccFall;
+            if(Math.abs(yAcc)>yAccMax)
+                yAcc=yAccMax*Math.abs(yAcc)/yAcc;
+            yAcc=Math.round(yAcc*1000)/1000
+            obj.yAcc=yAcc;
+            obj.y=y;
+            // VERTICAL MOVE /
+        });
+        // CALCULATING OBJECTS /
+        
+        // CAMERA MOVE
+        x=o[cF].x;
+        y=o[cF].y;
+        if(cX!=x)
+            cX=Math.round((cX+Math.abs(x-cX)*Math.abs(x-cX)/(x-cX)/cS)*100)/100;
+        if(cY!=y)
+            cY=Math.round(cY*100+Math.abs(y-cY)*Math.abs(y-cY)/(y-cY)/cS*100)/100;
+        // CAMERA MOVE /
+        
+        // RENDERING
+		p.clearRect(0,0,c.width,c.height); // blocks rendering
+		p.fillStyle="#000000";
+		b.forEach(function(item){
+            if(item.texture=="")
+                p.fillRect(
+                    Math.round(c.width/2+(item.x-cX)*pxl-pxl/2,2),
+                    Math.round(c.height/2-(item.y-cY)*pxl+oP[o[0].object].height/2*pxl-pxl,2),
+                    pxl,
+                    pxl);
+            else
+                p.drawImage(
+                    textures.wood,
+                    Math.round(c.width/2+(item.x-cX-.5)*pxl,2),
+                    Math.round(c.height/2-(item.y-cY)*pxl+oP[o[0].object].height/2*pxl-pxl,2),pxl,pxl
+                           )
+		}); // blocks rendering /
+        
+        o.forEach(function(obj,id){ // objects rendering
+            objP=oP[obj.object];
+            objF=o[cF];
+            objFP=oP[objF.object];
+            if(id==cF)
+                p.fillStyle="#ff0000";
+            else
+                p.fillStyle="#000000";
+            if(objP.texture==undefined)
+                p.fillRect(
+                    Math.round(c.width/2+(obj.x-cX-objP.width/2)*pxl),
+                    Math.round(c.height/2+(cY-obj.y+objFP.height/2-objP.height)*pxl),
+                    objP.width*pxl,
+                    objP.height*pxl);
+            else{
+                p.save();
+                angle=angleCalc(270-obj.angle);
+                y=  (Math.sin(angle*Math.PI/180)*objP.height-
+                    Math.sqrt(2)*Math.sin((angle+45)*Math.PI/180)*objP.height/2+objP.height/2)*pxl;
+                x=(-Math.sqrt(2)*Math.sin((angle+45)*Math.PI/180)*objP.width/2+objP.width/2)*pxl;
+    
+                p.translate(
+                    Math.round((c.width/2+(obj.x-cX-objP.width/2)*pxl+x)*1000)/1000,
+                    Math.round((c.height/2+(cY-obj.y+objFP.height/2-objP.height)*pxl+y)*1000)/1000);
+                p.rotate(angleCalc(obj.angle+90)*Math.PI/180);
+                p.drawImage(
+                    textures[objP.texture],
+                    0,
+                    0);
+                p.restore();
+            }
+                
+                
+        }); // objects rendering /
+        
+        e.forEach(function(eff){
+            objF=o[cF];
+            objFP=oP[objF.object];
+                    p.beginPath();
+                    p.arc(
+                        Math.round(c.width/2+(eff.x-cX)*pxl),
+                        Math.round(c.height/2+(cY-eff.y+eP[eff.id].range/2+objFP.height/2-eP[0].range/2)*pxl),
+                        40,00,360*Math.PI);
+                    p.stroke();
+                });
+        
+        // RENDERING /
+        
+        // FPS
+        timeD=Date.now()-timeBefore;
+        if(intervals.length>=40)
+        intervals.shift();
+        count=intervals.push(timeD);
+        fps=0;
+        intervals.forEach(function(item){
+            fps+=item;
+        });
+        fps=Math.round(1000/fps*count);
+        // FPS /
+        span.innerHTML = "x = "+o[cF].x+"<br>y = "+o[cF].y+"<br>fps = "+fps+"<br>mouse angle = "+mouseAngle+"<br>[1]-[5] skills";
+        
+        timeD=Date.now()-timeBefore;
+        timeBefore=Date.now();
+        newTimeout=1000/fpsMax-timeD/fpsMax;
+        if(newTimeout<0)
+            newTimeout=0;
+        if(!debug)
+            main=setTimeout(update,newTimeout);
+	} // MAIN FUNCTION
+    
+    
+    
+    
+    // CONTROLS
+    document.onkeydown=function(e){
+        //a65 w87 d68 s83 space32
+        if(e.keyCode>=49 && e.keyCode<=59){
+            skillSel=e.keyCode-49;
+        }
+        switch(e.keyCode){
+            case 65:
+                left=Date.now();
+                break;
+            case 68:
+                right=Date.now();;
+                break;
+            case 32:
+                jump=1;
+                break;   
+        }
+    }
+    document.onkeyup=function(e){
+        switch(e.keyCode){
+            case 65:
+                left=0;
+                break;
+            case 68:
+                right=0;
+                break;
+            case 32:
+                jump=0;
+                break;  
+        }
+    }
+    c.onmousemove=function(e){
+        mX=e.clientX-c.offsetLeft;
+        mY=e.clientY-c.offsetTop;
+        mouseAngle=accToAngle(mX-c.width/2,mY-c.height/2);
+    }
+    c.onclick=function(){
+        o[cF].skill=skillSel;
+    }
+    //CONTROLS /
+</script>
+</body>
+</html>

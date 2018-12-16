@@ -1,0 +1,19 @@
+s=[];
+s[s.length]=[
+    {type:"spawn",object:1,angle:0}
+]
+s[s.length]=[
+    {type:"spawn",object:1,angle:0},
+    {type:"spawn",object:1,angle:-5},
+    {type:"spawn",object:1,angle:5}
+]
+s[s.length]=[
+    {type:"spawn",object:2,angle:0}
+]
+s[s.length]=[
+    {type:"transform",id:3}
+]
+s[s.length]=[
+    {type:"transform",id:4,ticks:20},
+    {type:"accToAngle",acc:0.5}
+]

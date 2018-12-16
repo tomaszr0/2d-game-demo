@@ -1,0 +1,23 @@
+canvas{
+    display: block;
+    border: 1px solid black;
+}
+left,up,right{
+    display: inline-block;
+    position: fixed;
+    bottom: 0px;
+    border: 1px solid black;
+    padding: 20px;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    display:none;
+}
+left{
+    left: 0px;
+}
+up{
+    left: 50%;
+}
+right{
+    right: 0px;
+}
